@@ -36,28 +36,41 @@ def _parse_xml(xml_str: str) -> dict | None:
 
 
 class EventReader(threading.Thread):
-    def __init__(self, output_queues: list, max_queue_depth: int = 1000) -> None:
+    def __init__(self, output_queues: list) -> None:
         super().__init__(daemon=True, name="dns-reader")
         self._queues = output_queues
-        self._max_depth = max_queue_depth
         self._stop_evt = threading.Event()
-        self.dropped: int = 0
+        self._dropped: int = 0
+        self._dropped_lock = threading.Lock()
+        self._startup_error: Exception | None = None
+        self._ready = threading.Event()
+
+    @property
+    def dropped(self) -> int:
+        with self._dropped_lock:
+            return self._dropped
 
     def stop(self) -> None:
         self._stop_evt.set()
 
     def run(self) -> None:
-        signal = win32event.CreateEvent(None, False, False, None)
-        sub = win32evtlog.EvtSubscribe(
-            CHANNEL,
-            win32evtlog.EvtSubscribeToFutureEvents,
-            SignalEvent=signal,
-        )
+        try:
+            signal = win32event.CreateEvent(None, False, False, None)
+            sub = win32evtlog.EvtSubscribe(
+                CHANNEL,
+                win32evtlog.EvtSubscribeToFutureEvents,
+                SignalEvent=signal,
+            )
+        except Exception as e:
+            self._startup_error = e
+            self._ready.set()
+            return
+        self._ready.set()
         try:
             while not self._stop_evt.is_set():
                 win32event.WaitForSingleObject(signal, 500)
                 while True:
-                    events = win32evtlog.EvtNext(sub, 10, -1)
+                    events = win32evtlog.EvtNext(sub, 10, 0)  # 0 = nonblocking
                     if not events:
                         break
                     for raw in events:
@@ -72,8 +85,9 @@ class EventReader(threading.Thread):
             win32evtlog.EvtClose(signal)
 
     def _fanout(self, event: dict) -> None:
-        if any(q.qsize() >= self._max_depth for q in self._queues):
-            self.dropped += 1
-            return
         for q in self._queues:
-            q.put_nowait(event)
+            try:
+                q.put_nowait(event)
+            except queue.Full:
+                with self._dropped_lock:
+                    self._dropped += 1

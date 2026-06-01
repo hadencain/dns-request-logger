@@ -71,8 +71,14 @@ def test_fanout_puts_to_all_queues():
 def test_fanout_drops_when_queue_full():
     q1: queue.Queue = queue.Queue(maxsize=1)
     q1.put("existing")
-    reader = EventReader(output_queues=[q1], max_queue_depth=1)
+    reader = EventReader(output_queues=[q1])
     event = {"domain": "a.com", "query_type": "A", "pid": 1, "timestamp": "2026-01-01T00:00:00Z"}
     reader._fanout(event)
     assert reader.dropped == 1
     assert q1.qsize() == 1  # not grown
+
+
+def test_eventreader_default_init():
+    q = queue.Queue()
+    reader = EventReader(output_queues=[q])
+    assert reader.dropped == 0
