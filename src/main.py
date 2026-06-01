@@ -51,15 +51,28 @@ def main() -> None:
         rprint("Right-click your terminal and select 'Run as administrator', then try again.")
         sys.exit(1)
 
-    analyzer_q: queue.Queue = queue.Queue()
-    log_q: queue.Queue = queue.Queue()
+    analyzer_q: queue.Queue = queue.Queue(maxsize=1000)
+    log_q: queue.Queue = queue.Queue(maxsize=1000)
 
     analyzer = Analyzer()
-    logger = Logger()
     reader = EventReader(output_queues=[analyzer_q, log_q])
     tui = TUI(analyzer)
 
     stop_event = threading.Event()
+
+    reader.start()
+    ready = reader._ready.wait(timeout=5)
+    if not ready:
+        rprint("[bold red]Error:[/] EventReader did not become ready within 5 seconds.")
+        reader.stop()
+        sys.exit(1)
+    if reader._startup_error:
+        rprint(f"[bold red]Error:[/] Could not subscribe to DNS event log: {reader._startup_error}")
+        rprint("Enable with: wevtutil sl Microsoft-Windows-DNS-Client/Operational /e:true")
+        reader.stop()
+        sys.exit(1)
+
+    logger = Logger()
 
     def analyzer_loop():
         try:
@@ -75,15 +88,8 @@ def main() -> None:
         except queue.Empty:
             pass
 
-    reader.start()
-    reader._ready.wait(timeout=5)
-    if reader._startup_error:
-        rprint(f"[bold red]Error:[/] Could not subscribe to DNS event log: {reader._startup_error}")
-        rprint("Enable with: wevtutil sl Microsoft-Windows-DNS-Client/Operational /e:true")
-        sys.exit(1)
-
-    _worker(analyzer_loop, stop_event)
-    _worker(logger_loop, stop_event)
+    at = _worker(analyzer_loop, stop_event)
+    lt = _worker(logger_loop, stop_event)
 
     rprint(f"[dim]Logging session to: {logger.path}[/]")
     rprint("[dim]Press Ctrl+C to stop.[/]\n")
@@ -100,6 +106,8 @@ def main() -> None:
         stop_event.set()
         reader.stop()
         reader.join(timeout=2)
+        at.join(timeout=1)
+        lt.join(timeout=1)
         logger.close()
         print_summary(analyzer, reader)
 
