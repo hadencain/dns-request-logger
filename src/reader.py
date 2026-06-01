@@ -85,7 +85,7 @@ class EventReader(threading.Thread):
                             self._fanout(parsed)
         finally:
             win32evtlog.EvtClose(sub)
-            win32evtlog.EvtClose(signal)
+            win32event.CloseHandle(signal)
 
     def _fanout(self, event: dict) -> None:
         for q in self._queues:

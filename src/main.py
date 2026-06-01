@@ -39,7 +39,10 @@ def print_summary(analyzer: Analyzer, reader: EventReader) -> None:
 def _worker(fn, stop_event: threading.Event) -> threading.Thread:
     def _run():
         while not stop_event.is_set():
-            fn()
+            try:
+                fn()
+            except Exception as e:
+                print(f"[worker error] {e}", file=sys.stderr)
     t = threading.Thread(target=_run, daemon=True)
     t.start()
     return t
@@ -56,7 +59,7 @@ def main() -> None:
 
     analyzer = Analyzer()
     reader = EventReader(output_queues=[analyzer_q, log_q])
-    tui = TUI(analyzer)
+    tui = TUI(analyzer, reader=reader)
 
     stop_event = threading.Event()
 

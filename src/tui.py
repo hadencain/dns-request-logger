@@ -12,8 +12,9 @@ MAX_DOMAIN_ROWS = 40
 
 
 class TUI:
-    def __init__(self, analyzer: Analyzer) -> None:
+    def __init__(self, analyzer: Analyzer, reader=None) -> None:
         self._analyzer = analyzer
+        self._reader = reader
         self._start_time = datetime.datetime.now()
 
     def build(self) -> Layout:
@@ -63,11 +64,13 @@ class TUI:
     def _status_bar(self, snap: dict) -> Panel:
         elapsed = datetime.datetime.now() - self._start_time
         uptime = str(elapsed).split(".")[0]
+        reader_dropped = self._reader.dropped if self._reader else 0
+        total_dropped = snap["dropped"] + reader_dropped
         text = Text()
         text.append(f"Session: {uptime}", style="green")
         text.append("  |  ")
         text.append(f"Total queries: {snap['total']}", style="white")
         text.append("  |  ")
-        dropped_style = "bold red" if snap["dropped"] > 0 else "dim"
-        text.append(f"Dropped: {snap['dropped']}", style=dropped_style)
+        dropped_style = "bold red" if total_dropped > 0 else "dim"
+        text.append(f"Dropped: {total_dropped}", style=dropped_style)
         return Panel(text, border_style="dim")
