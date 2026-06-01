@@ -74,9 +74,12 @@ class EventReader(threading.Thread):
                     if not events:
                         break
                     for raw in events:
-                        xml_str = win32evtlog.EvtRender(
-                            raw, win32evtlog.EvtRenderEventXml
-                        )
+                        try:
+                            xml_str = win32evtlog.EvtRender(
+                                raw, win32evtlog.EvtRenderEventXml
+                            )
+                        except Exception:
+                            continue
                         parsed = _parse_xml(xml_str)
                         if parsed:
                             self._fanout(parsed)
