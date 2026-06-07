@@ -9,3 +9,8 @@ dist/
 build/
 .pytest_cache/
 session_log.md
+CLAUDE.md
+.claude/
+.superpowers/
+docs/superpowers/
+scratch/
